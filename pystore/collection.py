@@ -149,7 +149,8 @@ class Collection(object):
             self._list_items_threaded()
 
     def append(self, item, data, npartitions=None, epochdate=False,
-               threaded=False, reload_items=False, **kwargs):
+               threaded=False, reload_items=False, remove_duplicates='index',
+               **kwargs):
 
         if not utils.path_exists(self._item_path(item)):
             raise ValueError(
@@ -178,8 +179,32 @@ class Collection(object):
         # combine old dataframe with new
         current = self.item(item)
         new = dd.from_pandas(data, npartitions=1)
-        combined = dd.concat([current.data, new]).drop_duplicates(keep="last")
-
+        combined = dd.concat([current.data, new])
+        
+        # remove duplicates from combined dataframe
+        idx_name = combined.index.names
+        if remove_duplicates == 'index':
+            # drops all rows with duplicated indices (except the last one)
+            # ignores the values
+            combined = combined.reset_index()\
+                .drop_duplicates(subset=idx_name, keep="last")\
+                .set_index(idx_name)
+        elif remove_duplicates == 'values':
+            # drops only rows with duplicated column values (except the last one).
+            # ignores the index
+            combined.drop_duplicates(keep="last")
+        elif remove_duplicates == 'all':
+            # drops rows with duplicated indices first, than drops duplicated column values
+            combined = combined.reset_index()\
+                .drop_duplicates(subset=idx_name, keep="last")\
+                .set_index(idx_name)\
+                .drop_duplicates(keep="last")
+        elif remove_duplicates == 'values_in_same_index':
+            # drops all rows with duplicated values within an duplicated index
+            combined = combined.reset_index()\
+                .drop_duplicates(keep="last")\
+                .set_index(idx_name)
+         
         if npartitions is None:
             memusage = combined.memory_usage(deep=True).sum()
             if isinstance(combined, dd.DataFrame):
