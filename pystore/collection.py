@@ -192,7 +192,7 @@ class Collection(object):
         elif remove_duplicates == 'values':
             # drops only rows with duplicated column values (except the last one).
             # ignores the index
-            combined.drop_duplicates(keep="last")
+            combined = combined.drop_duplicates(keep="last")
         elif remove_duplicates == 'all':
             # drops rows with duplicated indices first, than drops duplicated column values
             combined = combined.reset_index()\
