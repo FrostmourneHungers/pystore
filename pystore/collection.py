@@ -149,9 +149,46 @@ class Collection(object):
             self._list_items_threaded()
 
     def append(self, item, data, npartitions=None, epochdate=False,
-               threaded=False, reload_items=False, remove_duplicates='index',
+               threaded=False, reload_items=False, remove_duplicates=None,
                **kwargs):
+        """Append new data to the collection.
 
+        Saves new data to the collection and optionially removes duplicates
+        within the data.
+
+        Parameters
+        ----------
+        item
+        data
+        npartitions
+        epochdate
+        threaded
+        reload_items
+        remove_duplicates : str, optional (default=None)
+            Defines how duplicates within the combined dataframe will be
+                handled.
+            None = no check for duplicated data. This is the fastest option
+                but the user is responsible for not having an overlap
+                between the new and old data
+            "index" = For data with unique index but non unique row values.
+                Rows with duplicated indices will be deleted. Ignores the
+                values
+            "values" = For data with non unique index but unique row values.
+                Rows with duplicated values will be deleted. Ignores the index
+            "all" = For data with unique index and unique row values. Rows
+                with duplicated indices will be deleted first and then all
+                rows with duplicated values will be deleted
+            "values_in_index" = For data with non unique index but unique row
+                values within index duplicates. Rows with duplicated values
+                within the same index will be deleted
+
+        kwargs
+
+        Returns
+        -------
+
+        """
+        
         if not utils.path_exists(self._item_path(item)):
             raise ValueError(
                 """Item do not exists. Use `<collection>.write(...)`""")
@@ -176,32 +213,38 @@ class Collection(object):
         if data.index.name == "":
             data.index.name = "index"
 
-        # combine old dataframe with new
+        # get old and new dataframe
         current = self.item(item)
         new = dd.from_pandas(data, npartitions=1)
-        combined = dd.concat([current.data, new])
-        
-        # remove duplicates from combined dataframe
-        idx_name = combined.index.names
+
+        # combine old dataframe with new and remove duplicates from 
+        # combined dataframe
+        idx_name = combined.index.name
         if remove_duplicates == 'index':
             # drops all rows with duplicated indices (except the last one)
             # ignores the values
-            combined = combined.reset_index()\
+            combined = dd.concat([current.data, new])\
+                .reset_index()\
                 .drop_duplicates(subset=idx_name, keep="last")\
                 .set_index(idx_name)
         elif remove_duplicates == 'values':
-            # drops only rows with duplicated column values (except the last one).
+            # drops only rows with duplicated column values.
             # ignores the index
-            combined = combined.drop_duplicates(keep="last")
+            combined = dd.concat([current.data, new])\
+                .drop_duplicates(keep="last")
         elif remove_duplicates == 'all':
-            # drops rows with duplicated indices first, than drops duplicated column values
-            combined = combined.reset_index()\
+            # drops rows with duplicated indices first
+            # than drops duplicated column values
+            combined = dd.concat([current.data, new])\
+                .reset_index()\
                 .drop_duplicates(subset=idx_name, keep="last")\
                 .set_index(idx_name)\
                 .drop_duplicates(keep="last")
-        elif remove_duplicates == 'values_in_same_index':
-            # drops all rows with duplicated values within an duplicated index
-            combined = combined.reset_index()\
+        elif remove_duplicates == 'values_in_index':
+            # drops all rows with duplicated values
+            # within an duplicated index
+            combined = dd.concat([current.data, new])\
+                .reset_index()\
                 .drop_duplicates(keep="last")\
                 .set_index(idx_name)
          
